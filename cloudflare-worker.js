@@ -63,8 +63,12 @@ async function handleCAPI(request, env) {
     }, 200, env);
 
   } catch (err) {
-    console.error('CAPI handler error:', err.message);
-    return corsResponse({ error: 'Internal error' }, 500, env);
+    console.error('CAPI handler error:', err.message, err.stack);
+    return corsResponse({ 
+      error: 'Internal error',
+      message: err.message,
+      stack: err.stack 
+    }, 500, env);
   }
 }
 
