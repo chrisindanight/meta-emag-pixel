@@ -67,7 +67,8 @@ async function handleCAPI(request, env) {
     return corsResponse({ 
       error: 'Internal error',
       message: err.message,
-      stack: err.stack 
+      stack: err.stack,
+      metaResponse: err.metaResponse || null
     }, 500, env);
   }
 }
@@ -198,7 +199,9 @@ async function sendToMeta(events, env) {
 
   if (!response.ok) {
     console.error('Meta CAPI error:', JSON.stringify(result));
-    throw new Error(`Meta CAPI returned ${response.status}`);
+    const error = new Error(`Meta CAPI returned ${response.status}`);
+    error.metaResponse = result;
+    throw error;
   }
 
   return result;
