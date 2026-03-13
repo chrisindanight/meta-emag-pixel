@@ -125,9 +125,8 @@ function enrichEvent(event, cfData, request) {
       // IP real — cel mai important pentru EMQ, Meta il hasheza automat
       client_ip_address: cfData.ip,
       // User agent complet
-      client_user_agent: request.headers.get('user-agent') || event.user_data?.client_user_agent || '',
-      // Geo din Cloudflare — gratuit, fara servicii externe
-      ...(cfData.country && !event.user_data?.country && { country: cfData.country.toLowerCase() }),
+      client_user_agent: request.headers.get('user-agent') || event.user_data?.client_user_agent || ''
+      // Note: Country removed - Meta requires SHA-256 hash for geo data
     }
   };
 
