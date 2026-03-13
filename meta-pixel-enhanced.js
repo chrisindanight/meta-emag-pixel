@@ -69,6 +69,9 @@
     firedEvents: new Set()
   };
 
+  // Detectează dacă app-ul Meta Shopify este activ
+  const IS_APP_ACTIVE = (typeof window.fbq !== 'undefined');
+
   // ============================================================
   // UTILITĂȚI
   // ============================================================
@@ -535,13 +538,18 @@
       
       if (text.includes('adaugă în coș') || text.includes('add to cart') || text.includes('cumpără')) {
         updateIntentScore('add_to_cart');
-        // Standard AddToCart event - folosit de Meta algoritm
-        const productData = extractProductData();
-        fireEvent('AddToCart', { ...productData, ...clickData }, { standard: true, deduplicate: false });
+        // Standard AddToCart event - skip dacă app e activ (el o face)
+        if (!IS_APP_ACTIVE) {
+          const productData = extractProductData();
+          fireEvent('AddToCart', { ...productData, ...clickData }, { standard: true, deduplicate: false });
+        }
         
       } else if (text.includes('checkout') || text.includes('finalizare') || text.includes('plată')) {
         updateIntentScore('initiate_checkout');
-        fireEvent('InitiateCheckout', clickData, { standard: true });
+        // InitiateCheckout - skip dacă app e activ
+        if (!IS_APP_ACTIVE) {
+          fireEvent('InitiateCheckout', clickData, { standard: true });
+        }
         
       } else if (text.includes('cumpără acum') || text.includes('buy now')) {
         updateIntentScore('add_to_cart');
@@ -709,10 +717,13 @@
         if (input.value.length >= 3) {
           STATE.searchQueries.push(input.value);
           updateIntentScore('site_search');
-          fireEvent('Search', {
-            search_string: input.value,
-            supplement_intent: detectSearchIntent(input.value)
-          }, { standard: true });
+          // Search event - skip dacă app e activ
+          if (!IS_APP_ACTIVE) {
+            fireEvent('Search', {
+              search_string: input.value,
+              supplement_intent: detectSearchIntent(input.value)
+            }, { standard: true });
+          }
         }
       }, 500));
     });
@@ -862,11 +873,12 @@
   // ============================================================
 
   function initStandardEvents() {
-    // PageView cu date extra
-    if (typeof fbq !== 'undefined') {
+    // PageView cu date extra - DOAR dacă app-ul nu e activ
+    if (!IS_APP_ACTIVE && typeof fbq !== 'undefined') {
       fbq('track', 'PageView');
     }
     
+    // Trimite ÎNTOTDEAUNA custom event cu date enriched (app sau nu)
     fireEvent('EnhancedPageView', {
       ...getPageContext(),
       ...STATE.deviceContext,
@@ -879,23 +891,28 @@
     // Marcheaza vizitatorul ca returnat
     setCookie('_emuid_ret', '1', 365);
     
-    // ViewContent pentru pagini de produs
+    // ViewContent pentru pagini de produs - skip dacă app e activ (el o face)
     if (detectPageType() === 'product') {
       const productData = extractProductData();
       STATE.productViews.push(productData);
       
-      fireEvent('ViewContent', {
-        ...productData,
-        view_timestamp: Date.now()
-      }, { standard: true });
+      if (!IS_APP_ACTIVE) {
+        fireEvent('ViewContent', {
+          ...productData,
+          view_timestamp: Date.now()
+        }, { standard: true });
+      }
     }
     
-    // Purchase detection prin URL
+    // Purchase detection prin URL - skip dacă app e activ
     if (window.location.pathname.includes('thank-you') || 
         window.location.pathname.includes('order-received') ||
         window.location.pathname.includes('confirmare')) {
       const orderData = extractOrderData();
-      fireEvent('Purchase', orderData, { standard: true, deduplicate: true });
+      
+      if (!IS_APP_ACTIVE) {
+        fireEvent('Purchase', orderData, { standard: true, deduplicate: true });
+      }
     }
   }
 
@@ -1005,20 +1022,22 @@
   // ============================================================
 
   function init() {
-    if (CONFIG.DEBUG) console.log('[MetaPixel Enhanced] Initializing...');
+    if (CONFIG.DEBUG) console.log('[MetaPixel Enhanced] Initializing...', IS_APP_ACTIVE ? '(App mode)' : '(Standalone mode)');
     
-    // Initializare Meta Pixel standard
-    !function(f,b,e,v,n,t,s) {
-      if(f.fbq) return;
-      n=f.fbq=function(){n.callMethod? n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-      if(!f._fbq) f._fbq=n;
-      n.push=n;n.loaded=!0;n.version='2.0';
-      n.queue=[];t=b.createElement(e);t.async=!0;
-      t.src=v;s=b.getElementsByTagName(e)[0];
-      s.parentNode.insertBefore(t,s)
-    }(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
-    
-    fbq('init', CONFIG.PIXEL_ID);
+    // Initializare Meta Pixel standard DOAR dacă app-ul nu e activ
+    if (!IS_APP_ACTIVE) {
+      !function(f,b,e,v,n,t,s) {
+        if(f.fbq) return;
+        n=f.fbq=function(){n.callMethod? n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq) f._fbq=n;
+        n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)
+      }(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
+      
+      fbq('init', CONFIG.PIXEL_ID);
+    }
     
     // Initializare tracking-uri
     initStandardEvents();
@@ -1077,13 +1096,20 @@
     fireEvent,
     updateIntentScore,
     extractProductData,
-    getState: () => ({ ...STATE }),
-    trackPurchase: (orderData) => fireEvent('Purchase', orderData, { standard: true, deduplicate: true }),
-    trackAddToCart: (productData) => fireEvent('AddToCart', productData, { standard: true }),
+    getState: () => ({ ...STATE, isAppActive: IS_APP_ACTIVE }),
+    trackPurchase: (orderData) => {
+      if (IS_APP_ACTIVE && CONFIG.DEBUG) console.warn('[MetaPixel Enhanced] App mode active - Purchase event skipped to avoid duplicates');
+      if (!IS_APP_ACTIVE) fireEvent('Purchase', orderData, { standard: true, deduplicate: true });
+    },
+    trackAddToCart: (productData) => {
+      if (IS_APP_ACTIVE && CONFIG.DEBUG) console.warn('[MetaPixel Enhanced] App mode active - AddToCart event skipped to avoid duplicates');
+      if (!IS_APP_ACTIVE) fireEvent('AddToCart', productData, { standard: true });
+    },
     trackLead: async (email, phone) => {
       const userData = {};
       if (email) userData.em = await hashSHA256(email);
       if (phone) userData.ph = await hashSHA256(phone.replace(/\D/g, ''));
+      // Lead e OK chiar dacă app-ul e activ (app-ul nu-l trimite automat)
       fireEvent('Lead', userData, { standard: true });
     }
   };
