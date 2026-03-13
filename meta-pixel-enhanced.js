@@ -22,9 +22,9 @@
   // CONFIGURARE - Modifica aceste valori
   // ============================================================
   const CONFIG = {
-    PIXEL_ID: 'YOUR_PIXEL_ID',           // ID-ul tău Meta Pixel
-    CAPI_ENDPOINT: '/api/meta-capi',      // Endpoint-ul tău server-side CAPI
-    DATASET_ID: 'YOUR_DATASET_ID',        // Pentru CAPI
+    PIXEL_ID: '1023917159458734',           // ID-ul tău Meta Pixel
+    CAPI_ENDPOINT: 'https://meta-capi-proxy.cristianlinaru.workers.dev/capi',      // Endpoint-ul tău server-side CAPI
+    DATASET_ID: '1023917159458734',        // Pentru CAPI
     DEBUG: false,                          // true pentru development
     
     // Praguri scoring intent (0-100)
