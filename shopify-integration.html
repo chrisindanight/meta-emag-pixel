@@ -1,0 +1,163 @@
+<!--
+============================================================
+SHOPIFY INTEGRATION
+============================================================
+1. theme.liquid — capturează _fbp/_fbc și le stochează
+2. checkout.liquid (Plus) — injectează pixelul la checkout  
+3. Additional scripts în Shopify Settings → Checkout
+============================================================
+-->
+
+<!-- ============================================================
+  PASUL 1: Adaugă în theme.liquid, înainte de </head>
+  Salvează cookie-urile Meta în note_attributes la checkout
+============================================================ -->
+<script>
+(function() {
+  // Capturează _fbp și _fbc din cookies
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return m ? m[2] : null;
+  }
+
+  const fbp = getCookie('_fbp');
+  const fbc = getCookie('_fbc');
+
+  // Salvează în sessionStorage pentru a le trimite la checkout
+  if (fbp) sessionStorage.setItem('meta_fbp', fbp);
+  if (fbc) sessionStorage.setItem('meta_fbc', fbc);
+
+  // Injectează în note_attributes Shopify (la submit cart/checkout)
+  document.addEventListener('submit', function(e) {
+    const form = e.target;
+    if (!form) return;
+
+    const action = (form.action || '').toLowerCase();
+    if (!action.includes('cart') && !action.includes('checkout')) return;
+
+    const storedFbp = sessionStorage.getItem('meta_fbp');
+    const storedFbc = sessionStorage.getItem('meta_fbc');
+
+    function addHidden(name, value) {
+      if (!value) return;
+      const existing = form.querySelector(`input[name="${name}"]`);
+      if (existing) { existing.value = value; return; }
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    }
+
+    // Questi campi finiscono in order.note_attributes
+    addHidden('attributes[_fbp]', storedFbp);
+    addHidden('attributes[_fbc]', storedFbc);
+  });
+})();
+</script>
+
+
+<!-- ============================================================
+  PASUL 2: Shopify Admin → Settings → Checkout → 
+  Additional scripts (Order status page)
+  
+  Acesta trimite Purchase la Meta imediat după confirmare
+============================================================ -->
+{% if first_time_accessed %}
+<script>
+(function() {
+  const orderData = {
+    id: {{ order.id }},
+    total: {{ order.total_price | money_without_currency }},
+    currency: '{{ order.currency }}',
+    items: [
+      {% for item in order.line_items %}
+      {
+        product_id: '{{ item.product_id }}',
+        quantity: {{ item.quantity }},
+        price: {{ item.price | money_without_currency }}
+      }{% unless forloop.last %},{% endunless %}
+      {% endfor %}
+    ]
+  };
+
+  // Trimite Purchase prin pixelul enhanced
+  if (window.MetaPixelEnhanced) {
+    window.MetaPixelEnhanced.trackPurchase({
+      value: orderData.total,
+      currency: orderData.currency,
+      order_id: String(orderData.id),
+      content_ids: orderData.items.map(i => i.product_id),
+      contents: orderData.items,
+      num_items: orderData.items.reduce((s, i) => s + i.quantity, 0)
+    });
+  } else if (typeof fbq !== 'undefined') {
+    // Fallback: pixel standard
+    fbq('track', 'Purchase', {
+      value: orderData.total,
+      currency: orderData.currency,
+      content_ids: orderData.items.map(i => i.product_id),
+      content_type: 'product'
+    }, { eventID: 'shopify_{{ order.id }}' });
+  }
+})();
+</script>
+{% endif %}
+
+
+<!-- ============================================================
+  PASUL 3: Shopify Admin → Settings → Notifications → 
+  Order Confirmation (webhook) — SAU folosești Shopify Flow
+  
+  Alternativ: setează webhook în Shopify Admin →
+  Settings → Notifications → Webhooks → 
+  "Order payment" → URL: https://sync.tudomeniu.ro/api/shopify-webhook
+  
+  (opțional dacă folosești GitHub Actions pentru sync)
+============================================================ -->
+
+
+<!--
+============================================================
+SETUP COMPLET — Checklist
+
+CLOUDFLARE WORKER:
+  ☐ Mergi la dash.cloudflare.com → Workers & Pages → Create
+  ☐ Copiază conținutul cloudflare-worker.js
+  ☐ Settings → Variables → Add encrypted:
+      META_CAPI_TOKEN = [din Meta Events Manager → Settings → Conversions API]
+      META_DATASET_ID = [ID-ul dataset-ului tău]
+      ALLOWED_ORIGIN  = https://tudomeniu.ro
+  ☐ Deployează și notează URL-ul (ex: meta-capi.tudomeniu.workers.dev)
+
+PIXEL ENHANCED (meta-pixel-enhanced.js):
+  ☐ Schimbă YOUR_PIXEL_ID cu ID-ul tău Meta Pixel
+  ☐ Schimbă CAPI_ENDPOINT cu URL-ul Worker-ului Cloudflare
+  ☐ Adaugă în <head> din theme.liquid (înlocuiește pixelul vechi)
+
+GITHUB ACTIONS:
+  ☐ Creează repo privat: meta-capi-sync
+  ☐ Copiază: sync.py, requirements.txt, .github/workflows/sync.yml
+  ☐ Settings → Secrets → Actions → New repository secret:
+      EMAG_USERNAME         = username-ul tău eMAG Marketplace
+      EMAG_PASSWORD         = parola API eMAG
+      SHOPIFY_STORE_URL     = mystore.myshopify.com
+      SHOPIFY_API_KEY       = din Shopify → Apps → Custom apps
+      SHOPIFY_API_SECRET    = idem
+      META_CAPI_TOKEN       = același ca la Worker
+      META_DATASET_ID       = același ca la Worker
+      META_PIXEL_ID         = ID-ul pixel
+  ☐ Activează GitHub Actions → verifică prima rulare manuală
+
+SHOPIFY:
+  ☐ Adaugă snippet-ul din Pasul 1 în theme.liquid
+  ☐ Adaugă snippet-ul din Pasul 2 în Order Status Page
+
+META EVENTS MANAGER:
+  ☐ Verifică că primești events în Test Events
+  ☐ Verifică EMQ score (ținta: 7+)
+  ☐ Creează audiență Custom Audience din event ExistingCustomer → Exclude din campanii achiziție
+  ☐ Creează Lookalike din Purchase → first_purchase (1-3%)
+
+============================================================
+-->

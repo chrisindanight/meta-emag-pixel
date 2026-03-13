@@ -1,0 +1,30 @@
+# Secrets - NEVER commit!
+.env
+.env.local
+*.secret
+secrets.json
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Testing
+test-data/
+*.test.json
