@@ -1,0 +1,54 @@
+name: Meta CAPI Sync
+
+on:
+  schedule:
+    # La fiecare 15 minute
+    - cron: '*/15 * * * *'
+  # Permite si rulare manuala din GitHub UI
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        env:
+          EMAG_USERNAME:          ${{ secrets.EMAG_USERNAME }}
+          EMAG_PASSWORD:          ${{ secrets.EMAG_PASSWORD }}
+          SHOPIFY_STORE_URL:      ${{ secrets.SHOPIFY_STORE_URL }}
+          SHOPIFY_API_KEY:        ${{ secrets.SHOPIFY_API_KEY }}
+          SHOPIFY_API_SECRET:     ${{ secrets.SHOPIFY_API_SECRET }}
+          META_CAPI_TOKEN:        ${{ secrets.META_CAPI_TOKEN }}
+          META_DATASET_ID:        ${{ secrets.META_DATASET_ID }}
+          META_PIXEL_ID:          ${{ secrets.META_PIXEL_ID }}
+        run: python sync.py
+
+      # Salveaza state.json intre rulari
+      - name: Save state
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sync-state
+          path: state.json
+          retention-days: 7
+          overwrite: true
+
+      - name: Restore state
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: sync-state
