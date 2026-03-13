@@ -118,15 +118,18 @@ async function handleSessionEnd(request, env) {
 // ============================================================
 
 function enrichEvent(event, cfData, request) {
+  // Remove country if present (Meta requires SHA-256 hash, we don't have it)
+  const userData = { ...event.user_data };
+  delete userData.country;
+  
   const enriched = {
     ...event,
     user_data: {
-      ...event.user_data,
+      ...userData,
       // IP real — cel mai important pentru EMQ, Meta il hasheza automat
       client_ip_address: cfData.ip,
       // User agent complet
       client_user_agent: request.headers.get('user-agent') || event.user_data?.client_user_agent || ''
-      // Note: Country removed - Meta requires SHA-256 hash for geo data
     }
   };
 
