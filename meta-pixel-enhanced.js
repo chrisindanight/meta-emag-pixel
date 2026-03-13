@@ -905,9 +905,13 @@
     }
     
     // Purchase detection prin URL - skip dacă app e activ
-    if (window.location.pathname.includes('thank-you') || 
-        window.location.pathname.includes('order-received') ||
-        window.location.pathname.includes('confirmare')) {
+    const isPurchasePage = 
+      window.location.pathname.includes('thank-you') || 
+      window.location.pathname.includes('order-received') ||
+      window.location.pathname.includes('confirmare') ||
+      (window.location.hostname.includes('shopify.com') && window.location.pathname.includes('/account/orders/'));
+    
+    if (isPurchasePage) {
       const orderData = extractOrderData();
       
       if (!IS_APP_ACTIVE) {
