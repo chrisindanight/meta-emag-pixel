@@ -1,3 +1,80 @@
+# ============================================================
+# META API HELPER (with retry logic)
+# ============================================================
+
+def send_to_meta_with_retry(events: list[dict], retry_count: int = 3) -> dict:
+    """Send events to Meta CAPI with retry logic."""
+    for attempt in range(retry_count):
+        try:
+            response = requests.post(
+                META_CAPI_URL,
+                json={
+                    'data': events,
+                    'access_token': META_CAPI_TOKEN
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get('events_received', 0) != len(events):
+                log.warning(f"Meta received {result.get('events_received')} of {len(events)} events")
+            
+            return result
+            
+        except requests.RequestException as e:
+            if attempt == retry_count - 1:
+                log.error(f"Meta CAPI failed after {retry_count} attempts: {e}")
+                raise
+            wait = 2 ** attempt
+            log.warning(f"Meta CAPI retry {attempt+1}/{retry_count} after {wait}s: {e}")
+            time.sleep(wait)
+# ============================================================
+# EMAG API CLIENT (with rate limiting)
+# ============================================================
+
+class EmagClient:
+    def __init__(self):
+        self.base_url = EMAG_API_URL
+        self.auth = (EMAG_USERNAME, EMAG_PASSWORD)
+        self.session = requests.Session()
+        self.last_request_time = 0
+        self.min_interval = 3  # seconds between requests (eMAG rate limit)
+
+    def _post(self, resource: str, action: str, data: dict, retry_count: int = 3) -> dict:
+        # Rate limit enforcement
+        elapsed = time.time() - self.last_request_time
+        if elapsed < self.min_interval:
+            sleep_time = self.min_interval - elapsed
+            log.debug(f"Rate limit: sleeping {sleep_time:.2f}s")
+            time.sleep(sleep_time)
+        
+        self.last_request_time = time.time()
+        
+        # Retry logic with exponential backoff
+        for attempt in range(retry_count):
+            try:
+                url = f"{self.base_url}/{resource}/{action}"
+                response = self.session.post(
+                    url,
+                    json=data,
+                    auth=self.auth,
+                    timeout=30
+                )
+                response.raise_for_status()
+                result = response.json()
+                
+                if result.get('isError'):
+                    raise Exception(f"eMAG API error: {result.get('messages', 'Unknown error')}")
+                
+                return result
+                
+            except requests.RequestException as e:
+                if attempt == retry_count - 1:
+                    raise
+                wait = 2 ** attempt  # 1s, 2s, 4s
+                log.warning(f"eMAG API retry {attempt+1}/{retry_count} after {wait}s: {e}")
+                time.sleep(wait)
 """
 ============================================================
 META CAPI SYNC — sync.py
